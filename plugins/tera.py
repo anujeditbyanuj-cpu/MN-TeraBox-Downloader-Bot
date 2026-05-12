@@ -1,194 +1,313 @@
-#please give credits https://github.com/MN-BOTS
+# please give credits https://github.com/MN-BOTS
 #  @MrMNTG @MusammilN
+
 import os
 import re
-import tempfile
-import requests
+import aiohttp
 import asyncio
-from datetime import datetime, timedelta
+import tempfile
 from urllib.parse import urlencode, urlparse, parse_qs
-from pyrogram import Client 
-from pyrogram import filters
-from pyrogram.types import Message
-from verify_patch import IS_VERIFY, is_verified, build_verification_link, HOW_TO_VERIFY
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from pyrogram import Client, filters
+from pyrogram.types import (
+    Message,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
+
 from pymongo import MongoClient
-import shutil
+from verify_patch import (
+    IS_VERIFY,
+    is_verified,
+    build_verification_link,
+    HOW_TO_VERIFY
+)
+
 from config import CHANNEL, DATABASE
-#please give credits https://github.com/MN-BOTS
-#  @MrMNTG @MusammilN
+
+# =========================
+# MongoDB
+# =========================
 
 mongo_client = MongoClient(DATABASE.URI)
 db = mongo_client[DATABASE.NAME]
 
-settings_col = db["terabox_settings"]
-queue_col = db["terabox_queue"]
-last_upload_col = db["terabox_lastupload"]
+# =========================
+# Regex
+# =========================
 
 TERABOX_REGEX = r'https?://(?:www\.)?[^/\s]*tera[^/\s]*\.[a-z]+/s/[^\s]+'
 
-COOKIE = "ndus=YzrYlCHteHuixx7IN5r0fc3sajSOYAHfqDoPM0dP" # add your own cookies like ndus=YzrYlCHteHuixx7IN5r0ABCDFXDGSTGBDJKLBKMKH
+# =========================
+# Cookie
+# =========================
+
+COOKIE = "ndus=YOUR_COOKIE_HERE"
+
+# =========================
+# Headers
+# =========================
 
 HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/135.0.0.0 Safari/537.36"
+    ),
     "Accept": "application/json, text/plain, */*",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Accept-Language": "en-US,en;q=0.9,hi;q=0.8",
-    "Connection": "keep-alive",
-    "DNT": "1",
-    "Host": "www.terabox.app",
-    "Upgrade-Insecure-Requests": "1",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
-    "sec-ch-ua": '"Microsoft Edge";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
-    "Cookie": COOKIE,
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Windows"',
+    "Cookie": COOKIE
 }
 
 DL_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 (KHTML, like Gecko) "
-                  "Chrome/91.0.4472.124 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;"
-              "q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/135.0.0.0 Safari/537.36"
+    ),
     "Referer": "https://www.terabox.com/",
-    "DNT": "1",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Cookie": COOKIE,
+    "Cookie": COOKIE
 }
 
-def get_size(bytes_len: int) -> str:
-    if bytes_len >= 1024 ** 3:
-        return f"{bytes_len / 1024**3:.2f} GB"
-    if bytes_len >= 1024 ** 2:
-        return f"{bytes_len / 1024**2:.2f} MB"
-    if bytes_len >= 1024:
-        return f"{bytes_len / 1024:.2f} KB"
-    return f"{bytes_len} bytes"
+# =========================
+# Utils
+# =========================
 
-def find_between(text: str, start: str, end: str) -> str:
+def get_size(size: int):
+    if size >= 1024**3:
+        return f"{size / 1024**3:.2f} GB"
+    elif size >= 1024**2:
+        return f"{size / 1024**2:.2f} MB"
+    elif size >= 1024:
+        return f"{size / 1024:.2f} KB"
+    return f"{size} B"
+
+
+def find_between(text: str, start: str, end: str):
     try:
         return text.split(start, 1)[1].split(end, 1)[0]
-    except Exception:
+    except:
         return ""
 
-def get_file_info(share_url: str) -> dict:
-    resp = requests.get(share_url, headers=HEADERS, allow_redirects=True)
-    if resp.status_code != 200:
-        raise ValueError(f"Failed to fetch share page ({resp.status_code})")
-    final_url = resp.url
 
-    parsed = urlparse(final_url)
-    surl = parse_qs(parsed.query).get("surl", [None])[0]
-    if not surl:
-        raise ValueError("Invalid share URL (missing surl)")
+# =========================
+# Get File Info
+# =========================
 
-    page = requests.get(final_url, headers=HEADERS)
-    html = page.text
+async def get_file_info(url: str):
 
-    js_token = find_between(html, 'fn%28%22', '%22%29')
-    logid = find_between(html, 'dp-logid=', '&')
-    bdstoken = find_between(html, 'bdstoken":"', '"')
-    if not all([js_token, logid, bdstoken]):
-        raise ValueError("Failed to extract authentication tokens")
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
 
-    params = {
-        "app_id": "250528", "web": "1", "channel": "dubox",
-        "clienttype": "0", "jsToken": js_token, "dp-logid": logid,
-        "page": "1", "num": "20", "by": "name", "order": "asc",
-        "site_referer": final_url, "shorturl": surl, "root": "1,",
-    }
-    info = requests.get(
-        "https://www.terabox.app/share/list?" + urlencode(params),
-        headers=HEADERS
-    ).json()
+        async with session.get(url, allow_redirects=True) as resp:
+            if resp.status != 200:
+                raise Exception(f"Invalid Link ({resp.status})")
 
-    if info.get("errno") or not info.get("list"):
-        errmsg = info.get("errmsg", "Unknown error")
-        raise ValueError(f"List API error: {errmsg}")
+            final_url = str(resp.url)
 
-    file = info["list"][0]
-    size_bytes = int(file.get("size", 0))
-    return {
-        "name": file.get("server_filename", "download"),
-        "download_link": file.get("dlink", ""),
-        "size_bytes": size_bytes,
-        "size_str": get_size(size_bytes)
-    }
+        parsed = urlparse(final_url)
+        surl = parse_qs(parsed.query).get("surl", [None])[0]
 
+        if not surl:
+            raise Exception("Failed To Get SURL")
+
+        async with session.get(final_url) as page:
+            html = await page.text()
+
+        js_token = find_between(html, 'fn%28%22', '%22%29')
+        logid = find_between(html, 'dp-logid=', '&')
+        bdstoken = find_between(html, 'bdstoken":"', '"')
+
+        if not all([js_token, logid, bdstoken]):
+            raise Exception("Failed To Extract Tokens")
+
+        params = {
+            "app_id": "250528",
+            "web": "1",
+            "channel": "dubox",
+            "clienttype": "0",
+            "jsToken": js_token,
+            "dp-logid": logid,
+            "page": "1",
+            "num": "20",
+            "by": "name",
+            "order": "asc",
+            "site_referer": final_url,
+            "shorturl": surl,
+            "root": "1"
+        }
+
+        api = (
+            "https://www.terabox.app/share/list?"
+            + urlencode(params)
+        )
+
+        async with session.get(api) as r:
+            data = await r.json()
+
+        if data.get("errno") != 0:
+            raise Exception(data.get("errmsg", "API Error"))
+
+        files = data.get("list")
+
+        if not files:
+            raise Exception("No Files Found")
+
+        file = files[0]
+
+        return {
+            "name": file.get("server_filename", "file"),
+            "size": int(file.get("size", 0)),
+            "size_text": get_size(int(file.get("size", 0))),
+            "dlink": file.get("dlink")
+        }
+
+
+# =========================
+# Download File
+# =========================
+
+async def download_file(url, path):
+
+    async with aiohttp.ClientSession(headers=DL_HEADERS) as session:
+
+        async with session.get(url) as resp:
+
+            if resp.status != 200:
+                raise Exception("Download Failed")
+
+            with open(path, "wb") as f:
+
+                async for chunk in resp.content.iter_chunked(1024 * 1024):
+                    f.write(chunk)
+
+
+# =========================
+# Main Handler
+# =========================
 
 @Client.on_message(filters.private & filters.regex(TERABOX_REGEX))
-async def handle_terabox(client, message: Message):
+async def terabox_handler(client: Client, message: Message):
+
     user_id = message.from_user.id
 
+    # =========================
+    # Verification
+    # =========================
+
     if IS_VERIFY and not await is_verified(user_id):
-        verify_url = await build_verification_link(client.me.username, user_id)
-        buttons = [
-            [
-                InlineKeyboardButton("✅ Verify Now", url=verify_url),
-                InlineKeyboardButton("📖 Tutorial", url=HOW_TO_VERIFY)
-            ]
-        ]
-        await message.reply_text(
-            "🔐 You must verify before using this command.\n\n⏳ Verification lasts for 12 hours.",
-            reply_markup=InlineKeyboardMarkup(buttons)
+
+        verify_url = await build_verification_link(
+            client.me.username,
+            user_id
         )
-        return
+
+        buttons = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "✅ Verify",
+                        url=verify_url
+                    ),
+                    InlineKeyboardButton(
+                        "📖 Tutorial",
+                        url=HOW_TO_VERIFY
+                    )
+                ]
+            ]
+        )
+
+        return await message.reply_text(
+            "🔐 Verification Required\n\n"
+            "⏳ Verification Valid For 12 Hours.",
+            reply_markup=buttons
+        )
 
     url = message.text.strip()
-    try:
-        info = get_file_info(url)
-    except Exception as e:
-        return await message.reply(f"❌ Failed to get file info:\n{e}")
 
-    temp_path = os.path.join(tempfile.gettempdir(), info["name"])
-
-    await message.reply("📥 Downloading...")
+    processing = await message.reply_text(
+        "🔍 Fetching File Info..."
+    )
 
     try:
-        with requests.get(info["download_link"], headers=DL_HEADERS, stream=True) as r:
-            r.raise_for_status()
-            with open(temp_path, "wb") as f:
-                shutil.copyfileobj(r.raw, f)
 
-        caption = (
-            f"File Name: {info['name']}\n"
-            f"File Size: {info['size_str']}\n"
-            f"Link: {url}"
+        info = await get_file_info(url)
+
+        file_name = info["name"]
+        file_size = info["size_text"]
+        dlink = info["dlink"]
+
+        await processing.edit_text(
+            f"📥 Downloading...\n\n"
+            f"📄 {file_name}\n"
+            f"📦 {file_size}"
         )
 
-        if CHANNEL.ID:
-            await client.send_document(
-                chat_id=CHANNEL.ID,
-                document=temp_path,
-                caption=caption,
-                file_name=info["name"]
-            )
+        temp_dir = tempfile.gettempdir()
+        temp_path = os.path.join(temp_dir, file_name)
 
-        sent_msg = await client.send_document(
+        await download_file(dlink, temp_path)
+
+        caption = (
+            f"📄 File Name: {file_name}\n"
+            f"📦 Size: {file_size}\n\n"
+            f"🔗 {url}"
+        )
+
+        # =========================
+        # Log Channel Upload
+        # =========================
+
+        if CHANNEL.ID:
+
+            try:
+                await client.send_document(
+                    chat_id=CHANNEL.ID,
+                    document=temp_path,
+                    caption=caption,
+                    file_name=file_name
+                )
+            except:
+                pass
+
+        # =========================
+        # User Upload
+        # =========================
+
+        sent = await client.send_document(
             chat_id=message.chat.id,
             document=temp_path,
             caption=caption,
-            file_name=info["name"],
+            file_name=file_name,
             protect_content=True
         )
 
-        await message.reply("✅ File will be deleted from your chat after 12 hours.")
+        await processing.delete()
+
+        await message.reply_text(
+            "✅ Uploaded Successfully\n\n"
+            "🗑 File Will Auto Delete In 12 Hours."
+        )
+
+        # =========================
+        # Auto Delete
+        # =========================
+
         await asyncio.sleep(43200)
+
         try:
-            await sent_msg.delete()
-        except Exception:
+            await sent.delete()
+        except:
             pass
 
     except Exception as e:
-        await message.reply(f"❌ Upload failed:\n`{e}`")
+
+        await processing.edit_text(
+            f"❌ Error:\n\n{e}"
+        )
+
     finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except:
+            pass
