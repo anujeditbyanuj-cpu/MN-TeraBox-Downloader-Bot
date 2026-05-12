@@ -58,7 +58,7 @@ def find_between(text: str, start: str, end: str) -> str:
 mongo_client = MongoClient(DATABASE.URI)
 db = mongo_client[DATABASE.NAME]
 
-COOKIE = "ndus=Y2YqaCTteHuiU3Ud_MYU7vHoVW4DNBi0MPmg_1tQ"  # keep or use your env
+COOKIE = "ndus=YfM5cX8peHuicbGZkiOdIPydCq6T8Vk-MjyxSTSq"  # keep or use your env
 HEADERS = {
     "Accept": "application/json, text/plain, */*",
     "Accept-Encoding": "gzip, deflate, br",
