@@ -66,17 +66,17 @@ class BUTTONS:
             [
                 InlineKeyboardButton(
                     "👨‍💻 Developer",
-                    url="https://t.me/MrMNTG"
+                    url="https://t.me/anujedits76"
                 )
             ],
             [
                 InlineKeyboardButton(
                     "📢 Updates",
-                    url="https://t.me/MNBots"
+                    url="https://t.me/logs_akbot"
                 ),
                 InlineKeyboardButton(
                     "💬 Support",
-                    url="https://t.me/MNBots_support"
+                    url="https://t.me/logs_akbot"
                 )
             ]
         ]
