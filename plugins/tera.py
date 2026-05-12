@@ -47,7 +47,7 @@ TERABOX_REGEX = r"https?://(?:www\.)?[^/\s]*tera[^/\s]*\.[a-z]+/s/[^\s]+"
 # Cookie
 # =========================================
 
-COOKIE = "ndus=YOUR_COOKIE_HERE"
+COOKIE = "ndus=YfM5cX8peHuicbGZkiOdIPydCq6T8Vk-MjyxSTSq"
 
 # =========================================
 # Headers
