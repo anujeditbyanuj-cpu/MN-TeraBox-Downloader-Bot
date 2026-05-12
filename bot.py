@@ -1,47 +1,92 @@
 import logging
 import threading
+
 from flask import Flask
-from pyrogram import Client, utils as pyroutils
+from pyrogram import Client
+
 from config import BOT, API, OWNER
 
+# =========================
+# Logging
+# =========================
 
-logging.getLogger().setLevel(logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s - %(levelname)s] %(message)s"
+)
+
 logging.getLogger("pyrogram").setLevel(logging.ERROR)
+
+# =========================
+# Flask App
+# =========================
 
 app = Flask(__name__)
 
-@app.route('/')
+@app.route("/")
 def home():
-    return "MnBot is running!"
+    return "MN Bot Running Successfully ✅"
 
 def run_flask():
-    app.run(host='0.0.0.0', port=8000)
+    app.run(
+        host="0.0.0.0",
+        port=8000,
+        debug=False
+    )
+
+# =========================
+# Bot Client
+# =========================
 
 class MN_Bot(Client):
+
     def __init__(self):
+
         super().__init__(
-            "MN-Bot",
+            name="MN-Bot",
             api_id=API.ID,
             api_hash=API.HASH,
             bot_token=BOT.TOKEN,
             plugins=dict(root="plugins"),
-            workers=16,
+            workers=50,
+            sleep_threshold=30
         )
 
     async def start(self):
+
         await super().start()
+
         me = await self.get_me()
-        BOT.USERNAME = f"@{me.username}"
-        self.mention = me.mention
+
         self.username = me.username
-        await self.send_message(chat_id=OWNER.ID,
-                                text=f"{me.first_name} ✅✅ BOT started successfully ✅✅")
-        logging.info(f"✅ {me.first_name} BOT started successfully")
+        self.mention = me.mention
+
+        BOT.USERNAME = f"@{me.username}"
+
+        logging.info(f"{me.first_name} Started Successfully")
+
+        try:
+            await self.send_message(
+                OWNER.ID,
+                f"✅ {me.first_name} Started Successfully"
+            )
+        except Exception as e:
+            logging.error(f"Owner Message Error: {e}")
 
     async def stop(self, *args):
+
         await super().stop()
-        logging.info("Bot Stopped 🙄")
+
+        logging.info("Bot Stopped")
+
+# =========================
+# Main
+# =========================
 
 if __name__ == "__main__":
-    threading.Thread(target=run_flask).start()
+
+    flask_thread = threading.Thread(target=run_flask)
+
+    flask_thread.start()
+
     MN_Bot().run()
