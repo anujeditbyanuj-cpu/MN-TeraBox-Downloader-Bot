@@ -17,7 +17,7 @@ class CHANNEL:
     ID = int(os.environ.get("CHANNEL_ID", -1003475522251))
 
 class WEB:
-    PORT = int(os.environ.get("PORT", 8000))
+    PORT = int(os.environ.get("PORT", 9090))
 
 class DATABASE:
     URI = os.environ.get("DB_URI", "mongodb+srv://Anujedit:Anujedit@cluster0.7cs2nhd.mongodb.net/?appName=Cluster0")
